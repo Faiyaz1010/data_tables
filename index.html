@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tables_Data</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    h2 {
+      color: #333;
+    }
+
+    .tables-container {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-bottom: 20px;
+      scroll-behavior: smooth;
+      white-space: nowrap;
+    }
+
+    .table-wrapper {
+      flex: 0 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      min-width: 500px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      display: inline-block;
+    }
+
+    .row-label-input {
+      width: 60px;
+    }
+
+    input, select, button {
+      padding: 6px;
+      margin: 4px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: linear-gradient(to right, #43e97b, #38f9d7);
+    }
+
+    table {
+      width: 100%;
+      margin-top: 10px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 8px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    canvas {
+      margin-top: 20px;
+      width: 70% !important;
+      height: 800px;
+      max-width: 70%;
+      background-color: #fff;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+
+    .chart-options {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
+
+    .header-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-flex input {
+      font-size: 18px;
+      font-weight: bold;
+      width: auto;
+      background: transparent;
+      border: none;
+      color: #333;
+      border-bottom: 1px dashed #aaa;
+    }
+
+    .delete-btn {
+      background: #ff4e50;
+      margin-left: 8px;
+    }
+
+    .delete-btn:hover {
+      background: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+
+<h2>📊 Data Tables</h2>
+<button onclick="createNewTable()">➕ New Table</button>
+
+<div class="tables-container" id="tables-container"></div>
+
+<script>
+let tableCount = 0;
+
+function createNewTable() {
+  const id = `table-${tableCount++}`;
+  const storedTables = JSON.parse(localStorage.getItem("tables") || "{}");
+
+  const defaultRowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const rowData = storedTables[id] || {
+    tableName: `Table ${tableCount}`,
+    rowLabels: [...defaultRowLabels],
+    data: []
+  };
+
+  storedTables[id] = rowData;
+  localStorage.setItem("tables", JSON.stringify(storedTables));
+
+  renderTable(id, rowData);
+}
+
+function renderTable(id, tableObj) {
+  const container = document.createElement('div');
+  container.className = 'table-wrapper';
+  container.id = id;
+
+  container.innerHTML = `
+    <div class="header-flex">
+      <input type="text" id="${id}-title" value="${tableObj.tableName}" onchange="saveTableTitle('${id}')"/>
+      <button class="delete-btn" onclick="deleteTable('${id}')">🗑️ Delete Table</button>
+    </div>
+
+    <label>📅 Date: <input type="date" id="${id}-date"></label><br>
+    <div id="${id}-rows">
+      ${tableObj.rowLabels.map((r, i) => `
+        <label>
+          <input type="text" class="row-label-input" id="${id}-label-${i}" value="${r}" onchange="updateRowLabels('${id}')" />
+          <input type="number" id="${id}-val-${i}" />
+        </label>`).join('')}
+    </div>
+    <button onclick="addData('${id}')">Add Data</button>
+    <button onclick="clearData('${id}')">Clear Data</button>
+
+    <h4>Filter</h4>
+    <label>From: <input type="date" id="${id}-from"></label>
+    <label>To: <input type="date" id="${id}-to"></label>
+    <label><input type="radio" name="${id}-mode" value="monthly" checked> Monthly</label>
+    <label><input type="radio" name="${id}-mode" value="yearly"> Yearly</label>
+    <button onclick="filterData('${id}')">Filter</button>
+    <button onclick="renderDataTable('${id}')">Show All</button>
+    <button onclick="toggleChart('${id}')">Hide Chart</button>
+
+    <div id="${id}-table"></div>
+
+    <div class="chart-options" id="${id}-chart-container">
+      <h4>Chart</h4>
+      <div id="${id}-checkboxes"></div>
+      <button onclick="drawChart('${id}', 'bar')">Bar</button>
+      <button onclick="drawChart('${id}', 'line')">Line</button>
+      <button onclick="drawChart('${id}', 'pie')">Pie</button>
+      <canvas id="${id}-chart" width="400" height="200"></canvas>
+    </div>
+  `;
+
+  document.getElementById("tables-container").appendChild(container);
+  updateCheckboxes(id);
+  renderDataTable(id);
+}
+
+function saveTableTitle(id) {
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  if (!tables[id]) return;
+  tables[id].tableName = document.getElementById(`${id}-title`).value;
+  localStorage.setItem("tables", JSON.stringify(tables));
+}
+
+function updateRowLabels(id) {
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  if (!tables[id]) return;
+  tables[id].rowLabels = [];
+
+  for (let i = 0; i < 7; i++) {
+    const label = document.getElementById(`${id}-label-${i}`).value.trim() || `R${i}`;
+    tables[id].rowLabels.push(label);
+  }
+
+  localStorage.setItem("tables", JSON.stringify(tables));
+  updateCheckboxes(id);
+  renderDataTable(id);
+}
+
+function addData(id) {
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  const table = tables[id];
+  if (!table) return;
+
+  const date = document.getElementById(`${id}-date`).value;
+  if (!date) return alert("Please select a date");
+
+  const entry = { date };
+  table.rowLabels.forEach((label, i) => {
+    const val = parseFloat(document.getElementById(`${id}-val-${i}`).value) || 0;
+    entry[label] = val;
+  });
+
+  const existing = table.data.find(d => d.date === date);
+  if (existing) Object.assign(existing, entry);
+  else table.data.push(entry);
+
+  localStorage.setItem("tables", JSON.stringify(tables));
+  renderDataTable(id);
+}
+
+function clearData(id) {
+  if (!confirm("Clear all data in this table?")) return;
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  tables[id].data = [];
+  localStorage.setItem("tables", JSON.stringify(tables));
+  renderDataTable(id);
+}
+
+function deleteTable(id) {
+  if (!confirm("Delete this table?")) return;
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  delete tables[id];
+  localStorage.setItem("tables", JSON.stringify(tables));
+  document.getElementById(id).remove();
+}
+
+function renderDataTable(id) {
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  const table = tables[id];
+  const div = document.getElementById(`${id}-table`);
+
+  let html = `<table><tr><th>Meter reading period FROM</th>${table.rowLabels.map(r => `<th>${r}</th>`).join('')}</tr>`;
+  table.data.forEach(d => {
+    html += `<tr><td>${d.date}</td>${table.rowLabels.map(r => `<td>${d[r] ?? ''}</td>`).join('')}</tr>`;
+  });
+  html += "</table>";
+  div.innerHTML = html;
+}
+
+function filterData(id) {
+  const from = document.getElementById(`${id}-from`).value;
+  const to = document.getElementById(`${id}-to`).value;
+  const mode = document.querySelector(`input[name="${id}-mode"]:checked`).value;
+
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  const table = tables[id];
+
+  let filtered = table.data.filter(d =>
+    (!from || d.date >= from) && (!to || d.date <= to)
+  );
+
+  if (mode === "yearly") {
+    const grouped = {};
+    filtered.forEach(entry => {
+      const year = new Date(entry.date).getFullYear();
+      if (!grouped[year]) {
+        grouped[year] = { date: year.toString(), ...Object.fromEntries(table.rowLabels.map(l => [l, 0])) };
+      }
+      table.rowLabels.forEach(label => {
+        grouped[year][label] += entry[label] || 0;
+      });
+    });
+    filtered = Object.values(grouped);
+  }
+
+  let html = `<table><tr><th>${mode === "yearly" ? 'Year' : 'Date'}</th>${table.rowLabels.map(r => `<th>${r}</th>`).join('')}</tr>`;
+  filtered.forEach(d => {
+    html += `<tr><td>${d.date}</td>${table.rowLabels.map(r => `<td>${d[r] ?? ''}</td>`).join('')}</tr>`;
+  });
+  document.getElementById(`${id}-table`).innerHTML = html + "</table>";
+}
+
+function updateCheckboxes(id) {
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  const table = tables[id];
+  const div = document.getElementById(`${id}-checkboxes`);
+  div.innerHTML = table.rowLabels.map(r => `<label><input type="checkbox" value="${r}" class="${id}-check"> ${r}</label>`).join(' ');
+}
+
+function toggleChart(id) {
+  const chartContainer = document.getElementById(`${id}-chart-container`);
+  const toggleBtn = document.querySelector(`#${id} button[onclick^="toggleChart"]`);
+
+  if (chartContainer.style.display === "none") {
+    chartContainer.style.display = "block";
+    toggleBtn.textContent = "Hide Chart";
+  } else {
+    chartContainer.style.display = "none";
+    toggleBtn.textContent = "Show Chart";
+  }
+}
+
+function drawChart(id, type) {
+  const checked = Array.from(document.querySelectorAll(`.${id}-check:checked`)).map(cb => cb.value);
+  if (!checked.length) return alert("Select at least one field");
+
+  const tables = JSON.parse(localStorage.getItem("tables") || "{}");
+  const table = tables[id];
+  const ctx = document.getElementById(`${id}-chart`).getContext("2d");
+  if (window[`${id}-chart-instance`]) window[`${id}-chart-instance`].destroy();
+
+  let labels = [], datasets = [];
+
+  if (type === "pie") {
+    const last = table.data[table.data.length - 1];
+    labels = checked;
+    datasets = [{
+      label: "Latest Data",
+      data: checked.map(r => last[r]),
+      backgroundColor: checked.map(() => "#" + Math.floor(Math.random()*16777215).toString(16))
+    }];
+  } else {
+    labels = table.data.map(d => d.date);
+    datasets = checked.map(r => ({
+      label: r,
+      data: table.data.map(d => d[r]),
+      borderWidth: 2,
+      borderColor: "#" + Math.floor(Math.random()*16777215).toString(16),
+      backgroundColor: type === "bar" ? "#" + Math.floor(Math.random()*16777215).toString(16) : "transparent"
+    }));
+  }
+
+  window[`${id}-chart-instance`] = new Chart(ctx, {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      scales: type === 'pie' ? {} : { y: { beginAtZero: true } }
+    }
+  });
+}
+
+// ..............................
+// Load existing tables from localStorage
+window.onload = () => {
+  const stored = JSON.parse(localStorage.getItem("tables") || "{}");
+  Object.keys(stored).forEach(id => renderTable(id, stored[id]));
+};
+</script>
+
+</body>
+</html>
